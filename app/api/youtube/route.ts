@@ -22,12 +22,16 @@ export async function POST(req: NextRequest) {
         console.log("YT RESPONSE:", data);
 
         const videoId = data.items?.[0]?.id?.videoId;
+        const thumbnail = data.items?.[0]?.snippet?.thumbnails?.high?.url || data.items?.[0]?.snippet?.thumbnails?.default?.url;
 
         if (!videoId) {
             throw new Error("No video found");
         }
 
-        return NextResponse.json({ videoId });
+        return NextResponse.json({
+            videoId,
+            thumbnail,
+        });
 
     } catch (error: any) {
         console.error("YOUTUBE ERROR:", error);

@@ -1,17 +1,26 @@
 "use client";
 
 import { useState, useEffect } from "react";
+import { motion } from "framer-motion";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [playlist, setPlaylist] = useState<any[]>([]);
+  const [savedSongs, setSavedSongs] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
 
   const [currentIndex, setCurrentIndex] = useState<number | null>(null);
   const [videoId, setVideoId] = useState<string | null>(null);
-  const [isPlaying, setIsPlaying] = useState(false);
 
-  // 🔥 Generate playlist
+  // Load saved songs
+  useEffect(() => {
+    const saved = localStorage.getItem("savedSongs");
+    if (saved) {
+      setSavedSongs(JSON.parse(saved));
+    }
+  }, []);
+
+  // Generate playlist
   const generate = async () => {
     if (!prompt) return;
 
@@ -32,12 +41,21 @@ export default function Home() {
     setLoading(false);
   };
 
-  // 🔥 Play a song
-  const playSong = async (index: number) => {
-    if (index < 0 || index >= playlist.length) return;
+  // Save song
+  const saveSong = (song: any) => {
+    const exists = savedSongs.find(
+      (s) => s.title === song.title && s.artist === song.artist
+    );
+    if (exists) return;
 
+    const updated = [...savedSongs, song];
+    setSavedSongs(updated);
+    localStorage.setItem("savedSongs", JSON.stringify(updated));
+  };
+
+  // Play song
+  const playSong = async (index: number) => {
     setCurrentIndex(index);
-    setIsPlaying(true);
 
     const song = playlist[index];
 
@@ -51,41 +69,37 @@ export default function Home() {
 
       const data = await res.json();
       setVideoId(data.videoId);
+
+      // 🔥 iTunes fetch (ONLY ONCE)
+      const itunesRes = await fetch("/api/itunes", {
+        method: "POST",
+        body: JSON.stringify({
+          query: song.title + " " + song.artist + " song",
+        }),
+      });
+
+      const itunesData = await itunesRes.json();
+
+      // 🔥 SAFE state update
+      const updated = [...playlist];
+      updated[index] = {
+        ...updated[index],
+        thumbnail: itunesData.image,
+      };
+
+      setPlaylist(updated);
+
     } catch (err) {
       console.error(err);
     }
   };
-
-  // 🔥 Next / Prev
-  const nextSong = () => {
-    if (currentIndex !== null) {
-      playSong(currentIndex + 1);
-    }
-  };
-
-  const prevSong = () => {
-    if (currentIndex !== null) {
-      playSong(currentIndex - 1);
-    }
-  };
-
-  // 🔥 Auto next
-  useEffect(() => {
-    if (!videoId) return;
-
-    const timer = setTimeout(() => {
-      nextSong();
-    }, 30000); // ~30 sec fallback
-
-    return () => clearTimeout(timer);
-  }, [videoId]);
 
   return (
     <div className="flex h-screen bg-black text-white">
 
       {/* Sidebar */}
       <div className="w-64 bg-neutral-900 p-6 hidden md:flex flex-col">
-        <h2 className="text-xl font-bold mb-6">AI Music</h2>
+        <h2 className="text-xl font-bold mb-6">VibeStream 🎧</h2>
 
         <ul className="space-y-4 text-gray-400">
           <li className="hover:text-white cursor-pointer">Browse</li>
@@ -101,49 +115,84 @@ export default function Home() {
       {/* Main */}
       <div className="flex-1 p-6 overflow-y-auto pb-28">
 
-        <h1 className="text-3xl font-bold mb-6">AI Music 🎧</h1>
+        <h1 className="text-3xl font-bold mb-6">VibeStream 🎧</h1>
 
         {/* Input */}
         <div className="flex gap-3 mb-6">
           <input
-            className="bg-neutral-800 p-3 rounded w-full outline-none"
-            placeholder="Late night drive..."
+            className="bg-neutral-800 p-3 rounded w-full"
+            placeholder="let's get lit"
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
 
           <button
             onClick={generate}
-            className="bg-white text-black px-5 rounded"
+            className="bg-white text-black px-5 rounded hover:scale-105 transition"
           >
             Generate
           </button>
         </div>
 
-        {loading && <p className="text-gray-400">Generating...</p>}
+        {loading && <p>Generating...</p>}
 
         {/* Playlist */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-5">
           {playlist.map((song, i) => (
-            <div
+            <motion.div
               key={i}
               onClick={() => playSong(i)}
-              className="bg-neutral-900 p-4 rounded-xl hover:bg-neutral-800 cursor-pointer"
+              whileHover={{ scale: 1.08 }}
+              whileTap={{ scale: 0.95 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.3, delay: i * 0.05 }}
+              className="bg-neutral-900/70 backdrop-blur-lg p-4 rounded-xl cursor-pointer"
             >
               <img
-                src={`https://source.unsplash.com/300x300/?music&sig=${i}`}
-                className="rounded mb-2"
+                src={
+                  song.thumbnail ||
+                  `https://via.placeholder.com/300x300?text=No+Image`
+                }
+                alt="cover"
+                className="rounded mb-2 w-full h-40 object-cover"
               />
 
               <p className="font-semibold truncate">{song.title}</p>
+              <p className="text-sm text-gray-400">{song.artist}</p>
+
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  saveSong(song);
+                }}
+                className="text-red-400 text-sm mt-2"
+              >
+                ❤️ Save
+              </button>
+            </motion.div>
+          ))}
+        </div>
+
+        {/* Saved Songs */}
+        <h2 className="text-xl mt-10 mb-4">Saved Songs ❤️</h2>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {savedSongs.map((song, i) => (
+            <div
+              key={i}
+              onClick={() => playSong(i)}
+              className="bg-neutral-800 p-3 rounded cursor-pointer"
+            >
+              <p className="truncate">{song.title}</p>
               <p className="text-sm text-gray-400">{song.artist}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* PLAYER */}
-      <div className="fixed bottom-0 left-0 w-full h-24 bg-neutral-900 border-t border-neutral-800 flex items-center justify-between px-6">
+      {/* Player */}
+      <div className="fixed bottom-0 left-0 w-full h-28 bg-neutral-900 border-t border-neutral-800 flex items-center justify-between px-6">
 
         {currentIndex !== null ? (
           <>
@@ -157,26 +206,11 @@ export default function Home() {
               </p>
             </div>
 
-            <div className="flex gap-6 text-xl items-center">
-              <button onClick={prevSong}>⏮</button>
-
-              <button
-                onClick={() => setIsPlaying(!isPlaying)}
-                className="text-2xl"
-              >
-                {isPlaying ? "⏸" : "▶"}
-              </button>
-
-              <button onClick={nextSong}>⏭</button>
-            </div>
-
             {/* YouTube Player */}
             {videoId && (
               <iframe
-                width="0"
-                height="0"
-                src={`https://www.youtube.com/embed/${videoId}?autoplay=${isPlaying ? 1 : 0
-                  }`}
+                className="w-72 h-20 rounded-lg"
+                src={`https://www.youtube.com/embed/${videoId}?autoplay=1&controls=1`}
                 allow="autoplay"
               />
             )}
