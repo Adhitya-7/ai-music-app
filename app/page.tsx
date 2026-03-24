@@ -1,14 +1,20 @@
 "use client";
-import { useState } from "react";
+
+import { useState, useEffect } from "react";
 
 export default function Home() {
   const [prompt, setPrompt] = useState("");
   const [playlist, setPlaylist] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
-  const [currentSong, setCurrentSong] = useState<any>(null);
 
+  const [currentIndex, setCurrentIndex] = useState<number | null>(null);
+  const [videoId, setVideoId] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+
+  // 🔥 Generate playlist
   const generate = async () => {
     if (!prompt) return;
+
     setLoading(true);
 
     try {
@@ -25,6 +31,54 @@ export default function Home() {
 
     setLoading(false);
   };
+
+  // 🔥 Play a song
+  const playSong = async (index: number) => {
+    if (index < 0 || index >= playlist.length) return;
+
+    setCurrentIndex(index);
+    setIsPlaying(true);
+
+    const song = playlist[index];
+
+    try {
+      const res = await fetch("/api/youtube", {
+        method: "POST",
+        body: JSON.stringify({
+          query: song.title + " " + song.artist + " official audio",
+        }),
+      });
+
+      const data = await res.json();
+      setVideoId(data.videoId);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  // 🔥 Next / Prev
+  const nextSong = () => {
+    if (currentIndex !== null) {
+      playSong(currentIndex + 1);
+    }
+  };
+
+  const prevSong = () => {
+    if (currentIndex !== null) {
+      playSong(currentIndex - 1);
+    }
+  };
+
+  // 🔥 Auto next
+  useEffect(() => {
+    if (!videoId) return;
+
+    const timer = setTimeout(() => {
+      nextSong();
+    }, 30000); // ~30 sec fallback
+
+    return () => clearTimeout(timer);
+  }, [videoId]);
 
   return (
     <div className="flex h-screen bg-black text-white">
@@ -45,22 +99,22 @@ export default function Home() {
       </div>
 
       {/* Main */}
-      <div className="flex-1 p-6 overflow-y-auto pb-24">
+      <div className="flex-1 p-6 overflow-y-auto pb-28">
 
         <h1 className="text-3xl font-bold mb-6">AI Music 🎧</h1>
 
         {/* Input */}
         <div className="flex gap-3 mb-6">
           <input
-            className="bg-neutral-800 p-3 rounded w-full outline-none focus:ring-2 ring-white/20"
-            placeholder="Late night rain drive..."
+            className="bg-neutral-800 p-3 rounded w-full outline-none"
+            placeholder="Late night drive..."
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
           />
 
           <button
             onClick={generate}
-            className="bg-white text-black px-5 rounded hover:scale-105 transition"
+            className="bg-white text-black px-5 rounded"
           >
             Generate
           </button>
@@ -73,52 +127,59 @@ export default function Home() {
           {playlist.map((song, i) => (
             <div
               key={i}
-              onClick={() => setCurrentSong(song)}
-              className="bg-neutral-900/70 backdrop-blur-lg p-4 rounded-xl hover:bg-neutral-800 transition cursor-pointer hover:scale-105"
+              onClick={() => playSong(i)}
+              className="bg-neutral-900 p-4 rounded-xl hover:bg-neutral-800 cursor-pointer"
             >
               <img
-                src={`https://source.unsplash.com/300x300/?music,album&sig=${i}`}
-                className="rounded-lg mb-3"
+                src={`https://source.unsplash.com/300x300/?music&sig=${i}`}
+                className="rounded mb-2"
               />
 
               <p className="font-semibold truncate">{song.title}</p>
-              <p className="text-sm text-gray-400 truncate">
-                {song.artist}
-              </p>
-              <p className="text-xs text-gray-500">{song.mood}</p>
+              <p className="text-sm text-gray-400">{song.artist}</p>
             </div>
           ))}
         </div>
       </div>
 
-      {/* 🎧 PLAYER */}
+      {/* PLAYER */}
       <div className="fixed bottom-0 left-0 w-full h-24 bg-neutral-900 border-t border-neutral-800 flex items-center justify-between px-6">
 
-        {currentSong ? (
+        {currentIndex !== null ? (
           <>
             <div>
               <p className="text-sm text-gray-400">Now Playing</p>
-              <p className="text-white font-semibold">
-                {currentSong.title}
+              <p className="font-semibold">
+                {playlist[currentIndex]?.title}
               </p>
               <p className="text-xs text-gray-500">
-                {currentSong.artist}
+                {playlist[currentIndex]?.artist}
               </p>
             </div>
 
-            <div className="flex gap-6 text-xl">
-              <button>⏮</button>
-              <button>▶</button>
-              <button>⏭</button>
+            <div className="flex gap-6 text-xl items-center">
+              <button onClick={prevSong}>⏮</button>
+
+              <button
+                onClick={() => setIsPlaying(!isPlaying)}
+                className="text-2xl"
+              >
+                {isPlaying ? "⏸" : "▶"}
+              </button>
+
+              <button onClick={nextSong}>⏭</button>
             </div>
 
-            {/* YouTube Embed */}
-            <iframe
-              className="hidden"
-              src={`https://www.youtube.com/embed?listType=search&list=${encodeURIComponent(
-                currentSong.title + " " + currentSong.artist
-              )}`}
-            />
+            {/* YouTube Player */}
+            {videoId && (
+              <iframe
+                width="0"
+                height="0"
+                src={`https://www.youtube.com/embed/${videoId}?autoplay=${isPlaying ? 1 : 0
+                  }`}
+                allow="autoplay"
+              />
+            )}
           </>
         ) : (
           <p className="text-gray-400">Select a song</p>
